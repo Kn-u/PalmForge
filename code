@@ -1,0 +1,121 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { 
+  Dna, 
+  FlaskConical, 
+  Map as MapIcon, 
+  Microscope, 
+  Plus, 
+  Zap, 
+  Shield, 
+  Wind,
+  Info,
+  RotateCcw,
+  TreePine,
+  Activity,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  Sparkles,
+  Heart,
+  Award,
+  Search,
+  Hammer,
+  ShoppingBag,
+  CloudLightning,
+  TrendingUp,
+  Boxes
+} from 'lucide-react';
+
+// --- Constants & Data ---
+const GENES = {
+  SUN: { id: 'sun', color: '#f59e0b', label: 'Photogene', icon: <Zap className="w-4 h-4" /> },
+  WATER: { id: 'water', color: '#3b82f6', label: 'Hydrogene', icon: <Wind className="w-4 h-4" /> },
+  EARTH: { id: 'earth', color: '#8b4513', label: 'Geogene', icon: <Shield className="w-4 h-4" /> },
+  WIND: { id: 'wind', color: '#10b981', label: 'Aerogene', icon: <Wind className="w-4 h-4" /> },
+};
+
+// INITIAL SPECIMENS
+// H = Dominant Tall, h = Recessive Dwarf (Low Resistance)
+// Y = Dominant Rich Yield, y = Recessive Low Yield (Low Production)
+const INITIAL_PALMS = [
+  { id: 1, name: 'Sabal Sapling', genes: ['EARTH'], level: 1, maxResistance: 25, resistance: 25, stats: { resistance: 25, production: 5 }, sprite: '🌴', alleles: { resistance: ['H', 'h'], production: ['Y', 'y'] } },
+  { id: 2, name: 'Areca Cane', genes: ['WIND'], level: 1, maxResistance: 20, resistance: 20, stats: { resistance: 20, production: 6 }, sprite: '🎋', alleles: { resistance: ['H', 'h'], production: ['y', 'y'] } },
+];
+
+const WILD_PALMS = [
+  { name: 'Sago Palm', genes: ['EARTH'], sprite: '🌱', rarity: 'Common', resistance: 18, maxResistance: 18, production: 4, alleles: { resistance: ['H', 'H'], production: ['Y', 'y'] } },
+  { name: 'Windmill Palm', genes: ['WIND'], sprite: '🌴', rarity: 'Uncommon', resistance: 22, maxResistance: 22, production: 5, alleles: { resistance: ['H', 'h'], production: ['Y', 'Y'] } },
+  { name: 'Fan Palm', genes: ['SUN', 'WIND'], sprite: '🌿', rarity: 'Rare', resistance: 28, maxResistance: 28, production: 4, alleles: { resistance: ['h', 'h'], production: ['Y', 'y'] } },
+  { name: 'King Coconut Palm', genes: ['WATER', 'SUN'], sprite: '🥥', rarity: 'Legendary', resistance: 35, maxResistance: 35, production: 8, alleles: { resistance: ['H', 'H'], production: ['Y', 'Y'] } }
+];
+
+// Complementary Base Pairs for DNA Sequencer
+const BASE_PAIRS = {
+  'A': { complement: 'T', color: 'bg-red-500/25 border-red-500 text-red-400' },
+  'T': { complement: 'A', color: 'bg-emerald-500/25 border-emerald-500 text-emerald-400' },
+  'C': { complement: 'G', color: 'bg-blue-500/25 border-blue-500 text-blue-400' },
+  'G': { complement: 'C', color: 'bg-yellow-500/25 border-yellow-500 text-yellow-400' }
+};
+const RANDOM_BASES = ['A', 'T', 'C', 'G'];
+
+// Map Settings
+const MAP_SIZE = 12; // 12x12 grid world
+
+export default function App() {
+  const [view, setView] = useState('map'); // 'map', 'sequencer', 'lab', 'soil', 'market', 'collection'
+  const [dnaPoints, setDnaPoints] = useState(150);
+  const [fruits, setFruits] = useState(15); // Collected raw crops
+  const [money, setMoney] = useState(45); // Cash currency generated from selling fruit
+  const [weatherShields, setWeatherShields] = useState(1); // Shield count against disasters
+  const [inventory, setInventory] = useState(INITIAL_PALMS);
+  const [discoveredGenes, setDiscoveredGenes] = useState(['EARTH', 'WIND']);
+  const [logs, setLogs] = useState(["Walk onto the beach or brush wild grass to harvest fruit to sell for money!"]);
+
+  // Global Genome Piece Storage (Persists across different encounters/excavations)
+  const [storedLeafPieces, setStoredLeafPieces] = useState(1);
+  const [storedBarkPieces, setStoredBarkPieces] = useState(0);
+  const [storedSeedPieces, setStoredSeedPieces] = useState(0);
+
+  // Audio Context for Retro Synth Sound Effects
+  const audioCtxRef = useRef(null);
+
+  const playBeep = (freq, duration = 0.1, type = "sine") => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    } catch (e) {
+      // Audio fallback
+    }
+  };
+
+  const playSuccessSound = () => {
+    playBeep(261.63, 0.1, "triangle"); // C4
+    setTimeout(() => playBeep(329.63, 0.1, "triangle"), 80); // E4
+    setTimeout(() => playBeep(392.00, 0.1, "triangle"), 160); // G4
+    setTimeout(() => playBeep(523.25, 0.3, "sine"), 240); // C5
+  };
+
+  const playErrorSound = () => {
+    playBeep(180, 0.25, "sawtooth");
+  };
+
+  const playWeatherAlert...
